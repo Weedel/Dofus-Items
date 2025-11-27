@@ -1,7 +1,20 @@
+import { useRef, useEffect, useCallback } from 'react';
 import ItemCard from './ItemCard';
 
-export default function ItemGrid({ items, onItemClick, loading }) {
-    if (loading) {
+export default function ItemGrid({ items, onItemClick, loading, hasMore, onLoadMore }) {
+    const observer = useRef();
+    const lastItemElementRef = useCallback(node => {
+        if (loading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                onLoadMore();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [loading, hasMore, onLoadMore]);
+
+    if (loading && items.length === 0) {
         return (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[...Array(12)].map((_, i) => (
@@ -17,7 +30,7 @@ export default function ItemGrid({ items, onItemClick, loading }) {
         );
     }
 
-    if (items.length === 0) {
+    if (items.length === 0 && !loading) {
         return (
             <div className="text-center py-12">
                 <svg className="mx-auto h-12 w-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -30,14 +43,35 @@ export default function ItemGrid({ items, onItemClick, loading }) {
     }
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {items.map((item) => (
-                <ItemCard
-                    key={item.id}
-                    item={item}
-                    onClick={() => onItemClick(item)}
-                />
-            ))}
+        <div className="space-y-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {items.map((item, index) => {
+                    if (items.length === index + 1) {
+                        return (
+                            <div ref={lastItemElementRef} key={item.id}>
+                                <ItemCard
+                                    item={item}
+                                    onClick={() => onItemClick(item)}
+                                />
+                            </div>
+                        );
+                    } else {
+                        return (
+                            <ItemCard
+                                key={item.id}
+                                item={item}
+                                onClick={() => onItemClick(item)}
+                            />
+                        );
+                    }
+                })}
+            </div>
+
+            {loading && (
+                <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                </div>
+            )}
         </div>
     );
 }
