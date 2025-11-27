@@ -14,6 +14,8 @@ export default function StatsView({ onItemClick }) {
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [hoveredItem, setHoveredItem] = useState(null);
+    const [availableTypes, setAvailableTypes] = useState([]);
+    const [excludedTypes, setExcludedTypes] = useState(['Rune de forgemagie']);
 
     const observer = useRef();
     const lastItemElementRef = useCallback(node => {
@@ -29,7 +31,7 @@ export default function StatsView({ onItemClick }) {
 
     useEffect(() => {
         fetchAllStats();
-    }, []);
+    }, [excludedTypes]);
 
     async function fetchAllStats() {
         try {
@@ -51,6 +53,27 @@ export default function StatsView({ onItemClick }) {
                 allIngredients = [...allIngredients, ...data];
                 if (data.length < fetchSize) break;
                 fetchPage++;
+            }
+
+            // 1.5. Fetch all items to get types and apply filter
+            const { data: items, error: itemsError } = await supabase
+                .from('items')
+                .select('id, type');
+
+            if (itemsError) throw itemsError;
+
+            // Get unique types for the tags
+            const types = [...new Set(items.map(item => item.type).filter(Boolean))].sort();
+            setAvailableTypes(types);
+
+            // Filter ingredients to exclude items with excluded types
+            if (excludedTypes.length > 0) {
+                const excludedItemIds = new Set(
+                    items
+                        .filter(item => excludedTypes.includes(item.type))
+                        .map(item => item.id)
+                );
+                allIngredients = allIngredients.filter(ing => !excludedItemIds.has(ing.item_id));
             }
 
             // 2. Aggregate stats (quantity, recipe count, and recipe IDs)
@@ -155,6 +178,18 @@ export default function StatsView({ onItemClick }) {
         else setHasMore(true);
     };
 
+    const toggleTypeExclusion = (type) => {
+        setExcludedTypes(prev => {
+            if (prev.includes(type)) {
+                return prev.filter(t => t !== type);
+            } else {
+                return [...prev, type];
+            }
+        });
+        // Reset pagination
+        setDisplayedItems([]);
+        setPage(0);
+    };
 
     if (loading) {
         return (
@@ -174,13 +209,71 @@ export default function StatsView({ onItemClick }) {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-white mb-4">
                     Ressources sous tension ({allSortedIds.length})
                     <span className="block text-sm font-normal text-gray-400 mt-1">
                         Classé par score de tension (Quantité × Recettes)
                     </span>
                 </h2>
+
+                {/* Type Filter Tags */}
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm font-medium text-gray-400">
+                            Types de ressources:
+                        </span>
+                        <span className="text-xs text-gray-500">
+                            (cliquez pour exclure/inclure)
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {availableTypes.map(type => {
+                            const isExcluded = excludedTypes.includes(type);
+                            return (
+                                <button
+                                    key={type}
+                                    onClick={() => toggleTypeExclusion(type)}
+                                    className={`
+                                        group relative px-3 py-1.5 rounded-lg text-sm font-medium
+                                        transition-all duration-200 border
+                                        ${isExcluded
+                                            ? 'bg-red-900/30 border-red-700/50 text-red-300 hover:bg-red-900/40'
+                                            : 'bg-blue-900/20 border-blue-700/30 text-blue-300 hover:bg-blue-900/30 hover:border-blue-600/50'
+                                        }
+                                    `}
+                                >
+                                    <span className="flex items-center gap-2">
+                                        {type}
+                                        {isExcluded && (
+                                            <svg
+                                                className="w-4 h-4 text-red-400"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M6 18L18 6M6 6l12 12"
+                                                />
+                                            </svg>
+                                        )}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {excludedTypes.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-700/30">
+                            <p className="text-xs text-gray-500">
+                                {excludedTypes.length} type{excludedTypes.length > 1 ? 's' : ''} exclu{excludedTypes.length > 1 ? 's' : ''}: {' '}
+                                <span className="text-red-400">{excludedTypes.join(', ')}</span>
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* List Header */}
